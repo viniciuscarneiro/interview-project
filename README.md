@@ -4,6 +4,46 @@ A Node.js/TypeScript backend built with NestJS, PostgreSQL, Prisma, and feature-
 
 **Interview API complete.** Health, authentication, Admin/Basic profiles, auction creation/activation, bidding, paginated listing, and deadline-based winner selection are implemented and verified. See [the contract](docs/auction-contract.md) for behavior and [current validation](docs/validation.md) for evidence.
 
+## Project at a glance
+
+```mermaid
+flowchart LR
+    admin["Admin"]
+    buyer["Basic customer"]
+
+    subgraph app["Single Node.js / NestJS application"]
+        http["REST API + access control"]
+        auth["Auth"]
+        auctions["Auctions"]
+        health["Health"]
+        persistence["Database diplomats"]
+        http --> auth
+        http --> auctions
+        http --> health
+        auth --> persistence
+        auctions --> persistence
+        health -->|"readiness only"| persistence
+    end
+
+    admin --> http
+    buyer --> http
+    persistence -->|"shared Prisma pool"| postgres[("PostgreSQL")]
+
+    classDef client fill:#F1F5F9,stroke:#64748B,color:#0F172A
+    classDef entry fill:#E0F2FE,stroke:#0284C7,color:#0C4A6E
+    classDef feature fill:#EEF2FF,stroke:#6366F1,color:#312E81
+    classDef storage fill:#ECFDF5,stroke:#059669,color:#064E3B
+    classDef database fill:#FEF3C7,stroke:#D97706,color:#78350F
+    class admin,buyer client
+    class http entry
+    class auth,auctions,health feature
+    class persistence storage
+    class postgres database
+    style app fill:transparent,stroke:#94A3B8,stroke-width:1px
+```
+
+The HTTP server uses one PostgreSQL database for users, auctions, and bids. Login and health are public; auction routes require a bearer token and the appropriate role. Liveness does not access the database. Local provisioning bootstraps the same modules in a separate CLI process.
+
 ## Local access
 
 - API: `http://127.0.0.1:3100`; readiness: `/health/ready`.
@@ -228,7 +268,49 @@ The historical creation migration remains unchanged. The new `202611110001_remov
 
 Read [AGENTS.md](AGENTS.md) before making changes. It defines dependency direction, internal-model boundaries, contracts, and testing requirements.
 
-Current source:
+### Diplomat dependency boundaries
+
+Arrows below show **code dependencies within a feature**. The dashed arrow marks implementation of a port. Nest feature modules bind concrete diplomats to use cases through factories.
+
+```mermaid
+flowchart TB
+    inbound["HTTP / CLI diplomats"]
+    outbound["Database / crypto diplomats"]
+    adapters["Adapters"]
+    wire["wire/in · wire/out"]
+    operations["Use cases"]
+    rules["Pure logic"]
+    ports["Effect ports"]
+    models["Internal models"]
+
+    inbound -->|"invoke"| operations
+    inbound -->|"map with"| adapters
+    inbound --> wire
+    outbound --> adapters
+    outbound -.->|"implement"| ports
+    adapters --> wire
+    adapters --> models
+    operations --> rules
+    operations --> ports
+    operations --> models
+    rules --> models
+    ports --> models
+
+    classDef diplomat fill:#E0F2FE,stroke:#0284C7,color:#0C4A6E
+    classDef mapping fill:#F3E8FF,stroke:#9333EA,color:#581C87
+    classDef contract fill:#FEF3C7,stroke:#D97706,color:#78350F
+    classDef core fill:#ECFDF5,stroke:#059669,color:#064E3B
+    classDef port fill:#CCFBF1,stroke:#0F766E,color:#134E4A,stroke-dasharray:5 3
+    class inbound,outbound diplomat
+    class adapters mapping
+    class wire contract
+    class operations,rules,models core
+    class ports port
+```
+
+The core contains use cases, pure rules, internal models, and consumer-owned ports. Adapters perform explicit representation mapping; generated Prisma types stay at persistence boundaries. For transactions, the database diplomat holds the lock and invokes the use-case-supplied decision on internal models.
+
+### Source layout
 
 ```text
 src/
