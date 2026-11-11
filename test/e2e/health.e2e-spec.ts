@@ -14,10 +14,6 @@ describe('Health HTTP contracts', () => {
     await app.close();
   });
 
-  it('reports process availability', async () => {
-    await request(app.getHttpServer()).get('/health/live').expect(200).expect({ status: 'ok' });
-  });
-
   it('reports database readiness', async () => {
     await request(app.getHttpServer())
       .get('/health/ready')

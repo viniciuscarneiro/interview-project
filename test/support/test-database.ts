@@ -1,5 +1,3 @@
-import type { PrismaService } from '../../src/infrastructure/database/prisma.service.js';
-
 export function assertTestDatabase(): void {
   const value = process.env['DATABASE_URL'];
   if (process.env['NODE_ENV'] !== 'test' || !value || value !== process.env['TEST_DATABASE_URL']) {
@@ -15,10 +13,4 @@ export function assertTestDatabase(): void {
   ) {
     throw new Error('Refusing data cleanup outside the local interview_test database.');
   }
-}
-
-export async function resetTestDatabase(database: PrismaService): Promise<void> {
-  assertTestDatabase();
-  // Only the reference feature table is cleared; migrations and other tables are preserved.
-  await database.reservation.deleteMany();
 }

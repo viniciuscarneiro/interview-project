@@ -3,6 +3,7 @@ export interface Environment {
   readonly host: string;
   readonly port: number;
   readonly databaseUrl: string;
+  readonly authTokenSecret: string;
 }
 
 export function readEnvironment(values: NodeJS.ProcessEnv): Environment {
@@ -29,5 +30,8 @@ export function readEnvironment(values: NodeJS.ProcessEnv): Environment {
   ) {
     throw new Error('DATABASE_URL must identify a PostgreSQL host and database.');
   }
-  return { nodeEnv, port, host: values['HOST'] ?? '127.0.0.1', databaseUrl };
+  const authTokenSecret = values['AUTH_TOKEN_SECRET'];
+  if (!authTokenSecret || Buffer.byteLength(authTokenSecret, 'utf8') < 32)
+    throw new Error('AUTH_TOKEN_SECRET must contain at least 32 bytes.');
+  return { nodeEnv, port, host: values['HOST'] ?? '127.0.0.1', databaseUrl, authTokenSecret };
 }

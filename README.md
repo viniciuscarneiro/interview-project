@@ -1,16 +1,23 @@
-# Interview Project
+# Vehicle Auction Interview API
 
-A runnable NestJS + TypeScript backend starter with PostgreSQL, Prisma, explicit HTTP contracts, and a feature-oriented Diplomat adaptation. The reference reservation feature is an example for learning and practice, not a prediction of the interview assignment.
+A Node.js/TypeScript backend built with NestJS, PostgreSQL, Prisma, and feature-oriented Diplomat boundaries.
 
-## Requirements
+**Interview API complete.** Health, authentication, Admin/Basic profiles, auction creation/activation, bidding, paginated listing, and deadline-based winner selection are implemented and verified. See [the contract](docs/auction-contract.md) for behavior and [current validation](docs/validation.md) for evidence.
+
+## Local access
+
+- API: `http://127.0.0.1:3100`; readiness: `/health/ready`.
+- Admin: `admin@example.test`; password is `DEMO_ADMIN_PASSWORD` in the local `.env`.
+- Customer: `buyer@example.test`; password is `DEMO_BUYER_PASSWORD` in `.env`.
+- Postman: import [the collection](docs/postman/vehicle-auction.postman_collection.json) and [environment template](docs/postman/local.postman_environment.json). Set the two password variables from `.env` in your private Postman environment. Login requests save access tokens for subsequent requests. Do not commit real credentials or tokens.
+
+For an existing checkout, preserve `.env`, apply migrations with `npm run db:migrate`, provision with `npm run auth:seed`, then start with `npm start` (or `npm run start:dev` for reloads). The following bootstrap commands are for a fresh checkout.
+
+## Requirements and setup
 
 - Node.js **26.7.0** (`.nvmrc`) and npm 11.
-- Docker with the Compose plugin, running locally.
-- Free local ports: **3100** (API), **55432** (development PostgreSQL), **55433** (test PostgreSQL).
-
-Dependencies are pinned in `package.json` and `package-lock.json`. Prisma CLI, client, and PostgreSQL adapter use the same stable version. This project uses native ESM (`type: module`, TypeScript `NodeNext`, `.js` specifiers in TypeScript source). Jest currently runs with Node's `--experimental-vm-modules` flag; the resulting Node warning is expected.
-
-## Quick start
+- Docker with the Compose plugin.
+- Local ports **3100** (API), **55432** (development PostgreSQL), and **55433** (test PostgreSQL).
 
 ```sh
 nvm install
@@ -18,116 +25,259 @@ nvm use
 npm ci
 cp .env.example .env
 cp .env.test.example .env.test
+# Replace the blank signing secret without printing it.
+node -e 'const fs = require("node:fs"); const key = require("node:crypto").randomBytes(32).toString("hex"); fs.writeFileSync(".env", fs.readFileSync(".env", "utf8").replace(/^AUTH_TOKEN_SECRET=.*$/m, "AUTH_TOKEN_SECRET=" + key));'
 npm run db:up
 npm run db:migrate
+npm run auth:seed
 npm run start:dev
 ```
 
-On the originally prepared machine, the local `.env` files and databases are already configured. Copy the examples only for a fresh checkout or when intentionally resetting local settings. Their credentials are disposable local development credentials. Both database ports and the API bind to loopback by default.
+Copy environment examples only on a fresh checkout; preserve existing local configuration. Dependencies are pinned, and Prisma CLI, client, and adapter versions match. The app uses native ESM and strict TypeScript. Prisma generation runs during installation and production builds.
 
-The API runs at `http://127.0.0.1:3100`. `npm ci` generates the Prisma client through `postinstall`. `npm run build` also regenerates it before compilation.
+The API and databases bind to loopback by default. This remains local development software. `AUTH_TOKEN_SECRET` is required at startup and must contain at least 32 bytes. Use a randomly generated secret; there is no runtime fallback. `.env.test.example` supplies an explicitly disposable test-only secret. Existing local configuration was extended only with missing auth settings; existing values were preserved.
+
+## Run the API with Postman
+
+The repository includes a Postman Collection v2.1 file with **13 requests covering all seven implemented endpoints**, plus a credential-free local environment template. The collection exercises the main lifecycle and a lower-bid rejection; it does not replace the automated backend test suites.
+
+### 1. Start the local application
+
+Complete [Requirements and setup](#requirements-and-setup) first. Keep the API running at `http://127.0.0.1:3100` with PostgreSQL available, current migrations applied, and demo accounts provisioned. Importing Postman files does not start services, apply migrations, or create users.
+
+For an already configured checkout, preserve existing environment files:
+
+```sh
+nvm use
+npm run db:up
+npm run db:migrate
+npm run auth:seed
+npm run start:dev
+```
+
+### 2. Import the collection and environment
+
+In the Postman desktop application, open your workspace and select **Import** (or **Use resources or import → Import**, depending on the version). Select these two files:
+
+- [Collection: vehicle-auction.postman_collection.json](docs/postman/vehicle-auction.postman_collection.json)
+- [Environment: local.postman_environment.json](docs/postman/local.postman_environment.json)
+
+Confirm that **Vehicle Auction Interview API** appears in Collections, with folders 01 through 05. Select **Vehicle Auction — Local** from the environment selector. Importing an environment does not necessarily select it automatically.
+
+### 3. Configure local credentials and inputs
+
+Open the selected environment and set the following values. Read password values from your own `.env`; enter the actual values, not the literal names `DEMO_ADMIN_PASSWORD` or `DEMO_BUYER_PASSWORD`.
+
+| Postman variable   | Value                                                                              |
+| ------------------ | ---------------------------------------------------------------------------------- |
+| `base_url`         | `http://127.0.0.1:3100`, with no trailing slash                                    |
+| `admin_email`      | `admin@example.test`                                                               |
+| `admin_password`   | The password used to provision the Admin account (`DEMO_ADMIN_PASSWORD` in `.env`) |
+| `buyer_email`      | `buyer@example.test`                                                               |
+| `buyer_password`   | The password used to provision the Basic account (`DEMO_BUYER_PASSWORD` in `.env`) |
+| `auction_end_time` | Leave blank for an automatically generated deadline 24 hours ahead                 |
+| `limit` / `offset` | `20` / `0`                                                                         |
+| `bid_amount`       | `1100000` EUR cents (EUR 11,000.00)                                                |
+
+Keep passwords private in Postman. The committed template deliberately leaves both passwords and tokens blank. Re-running `auth:seed` preserves existing passwords; changing `.env` alone does not reset a previously provisioned account.
+
+Do not manually fill `admin_access_token`, `buyer_access_token`, `buyer_id`, `auction_id`, `activated_at`, `first_bid_id`, `first_bid_amount`, or `last_bid_id`. The request scripts populate these in the selected environment. Authentication is already configured on each request; credentials belong in the login JSON body, not URL query parameters.
+
+### 4. Execute requests in order
+
+For a full run, open the collection's **Run** action, select all 13 requests, choose the configured environment, use **Functional → Local**, set **Iterations** to `1`, and keep variable values enabled. Start the run. If Runner is unavailable or its Start button remains disabled, open each request and click **Send** in the same order, checking **Test Results** before continuing.
+
+| Folder                          | Requests and expected results                                                                                                             |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `01 — Health`                   | Liveness and readiness: `200`.                                                                                                            |
+| `02 — Authentication`           | Admin and Basic logins: `200`; tokens are saved automatically.                                                                            |
+| `03 — Create and list auctions` | Create draft: `201`; save `auction_id`. Both listing requests: `200`.                                                                     |
+| `04 — Activation`               | Activate: `200`. Repeat activation: `200`, preserving the first timestamp.                                                                |
+| `05 — Bidding and winner`       | First bid: `201`. Equal bid: `201`. Leader query: `200`, retaining the earliest equal-highest bid. Lower bid: expected `409 BID_TOO_LOW`. |
+
+The creation request starts at `1000000` EUR cents (EUR 10,000.00). Run the scenario on a fresh auction without competing submissions. Send **Place bid — Basic** once per scenario: resending it creates another bid and overwrites the saved reference used by the tie test. **Place equal bid — Basic** is the intended second submission.
+
+Each complete run creates an auction and accepted bids in the database selected by the running API. The collection has no cleanup request because the API has no auction deletion endpoint. A successful final scenario has **24 passing assertions across 13 requests**; the intentional 409 response is a passing negative test.
+
+### 5. Check the winner after the deadline
+
+To exercise expiry without waiting 24 hours, set `auction_end_time` to a future ISO timestamp with an explicit timezone, allowing enough time to complete all requests (for example, three to five minutes ahead). Create a fresh auction and finish the bidding scenario before that deadline.
+
+After the deadline, resend only **Check earliest highest bid and winner — Basic**. The response should show `status: "ended"`, and `winner.id` should equal the saved `first_bid_id`. Before the deadline, `winner` is null. This check searches the newest 100 auctions; use the regular paginated listing if the selected auction is older than that page.
+
+**Clear `auction_end_time` after a short-deadline test.** A past value causes the next Create request to fail with `400 INVALID_END_TIME`. Tokens expire after one hour; rerun login if needed. The collection does not wait automatically or alter the server clock.
+
+### 6. Update an existing import and prepare a commit
+
+Changes to the repository JSON do not automatically update a collection imported into Postman. Re-import the collection file and choose **Replace** when prompted. Preserve your existing environment and its locally entered passwords instead of replacing it with the blank template. The setup used for a local verification may have a different environment name, such as **Vehicle Auction — Postman test**; those app-local values are not included in Git.
+
+Commit the collection JSON, the blank environment template, and their documentation under `docs/postman/`, together with this README. Do not overwrite the template with an export containing real passwords or captured tokens. `.env`, `.env.test`, and `.local/` are ignored by Git; private exports can be kept outside the repository or under `.local/`.
+
+See [Postman details and validation scope](docs/postman/README.md) for troubleshooting and the recorded live execution. Repository synchronization is a separate Postman configuration, not a property of a JSON import; see [Postman's import documentation](https://learning.postman.com/docs/getting-started/importing-and-exporting/importing-data/).
+
+## Current endpoints
+
+| Method | Path                     | Behavior                                                                        |
+| ------ | ------------------------ | ------------------------------------------------------------------------------- |
+| GET    | `/health/live`           | 200 while the process can answer, independent of PostgreSQL.                    |
+| GET    | `/health/ready`          | 200 when PostgreSQL answers; sanitized 503 otherwise.                           |
+| POST   | `/auth/login`            | Public login; 200 token/profile, 400 invalid input, or 401 invalid credentials. |
+| POST   | `/auctions`              | Admin only; create a persisted draft, 201.                                      |
+| POST   | `/auctions/:id/activate` | Admin only; activate an unexpired draft or repeat an existing activation, 200.  |
+| POST   | `/auctions/:id/bids`     | Basic only; accept an eligible bid, 201.                                        |
+| GET    | `/auctions`              | Admin/Basic; paginated auction representations, 200.                            |
 
 ```sh
 curl http://127.0.0.1:3100/health/live
 curl http://127.0.0.1:3100/health/ready
 ```
 
-Liveness returns `200 {"status":"ok"}` even when the database is unavailable. Readiness executes a real database query and returns 503 with a sanitized response if the dependency is unavailable. Database connections are lazy so that a dependency outage does not prevent the application from serving liveness. Connection/query timeouts are bounded, and the pool closes on application shutdown.
+Health readiness runs through a framework-independent use case and a database probe port implemented by the database diplomat. Its HTTP adapter preserves the public response shape; liveness requires no database operation. The shared database client has bounded timeouts and disconnects on application shutdown. Reservation endpoints remain removed. Login, auction creation/activation, bidding, and auction listing are available as described below.
 
-## Reference API
+## Authentication and demo accounts
 
-| Method | Path                | Behavior                                                                                                        |
-| ------ | ------------------- | --------------------------------------------------------------------------------------------------------------- |
-| POST   | `/reservations`     | Create an active reservation; 201 or 409 if the vehicle is already reserved.                                    |
-| GET    | `/reservations/:id` | Fetch a reservation; 200 or 404.                                                                                |
-| DELETE | `/reservations/:id` | Cancel a reservation; 200 with its representation, or 404. Repeated cancellation preserves the first timestamp. |
+`npm run auth:seed` builds the app and provisions `admin@example.test` (`ADMIN`) and `buyer@example.test` (`BASIC`). Passwords come from `DEMO_ADMIN_PASSWORD` and `DEMO_BUYER_PASSWORD` in `.env` (12–256 characters). Fresh example files contain disposable local demo passwords; existing workspace files may contain generated values. The command never prints passwords or tokens.
+
+Provisioning is restricted to the dedicated loopback development database, or the dedicated test database with `npm run auth:seed -- --test`. Apply migrations first. Repeat runs preserve IDs, roles, and existing password hashes even when different passwords are supplied; this command is not a password reset. Conflicting account identities or roles fail and roll back the entire batch. The application does not seed on startup.
+
+Login request (substitute the configured password):
 
 ```sh
-curl -i -X POST http://127.0.0.1:3100/reservations \
+curl -i http://127.0.0.1:3100/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"vehicleId":"11111111-1111-4111-8111-111111111111","buyerId":"22222222-2222-4222-8222-222222222222"}'
+  -d '{"email":"buyer@example.test","password":"<DEMO_BUYER_PASSWORD>"}'
 ```
 
-The response contains exactly `id`, `vehicleId`, `buyerId`, `status`, `createdAt`, and `cancelledAt`. Dates are ISO strings; `cancelledAt` is null while active. IDs must be UUIDs. Unknown request properties are rejected, including caller-supplied IDs, timestamps, and status.
+A successful login returns 200 with exactly `accessToken`, `tokenType: "Bearer"`, `expiresIn: 3600`, and `user: { id, email, role }`. Emails are trimmed and lowercased; passwords are not normalized. Unknown properties and invalid input return 400. Unknown users and wrong passwords share a generic 401 response. Password hashes are never returned.
 
-Use the returned reservation ID with GET or DELETE. After cancellation, the vehicle can be reserved again. Vehicle and buyer IDs are opaque references: this starter does not implement vehicle inventory, payments, users, authentication, expiry, or authorization. Keep it local; authentication/authorization must be designed before exposing it to real users.
+Send `Authorization: Bearer <accessToken>` for protected routes. The global auth guard protects registered routes by default. Only explicitly `@Public()` routes (login and health) bypass it. Use `@Roles('ADMIN')` or `@Roles('BASIC')` to restrict a route, and `@CurrentActor()` to receive the validated internal `{ id, role }` actor before adapting operation inputs. A role decorator restricts authenticated callers; it does not replace authentication. Never combine it with `@Public()`.
 
-### Concurrency and failure behavior
+Tokens use HS256 with a pinned algorithm, issuer, audience, validated subject/role, and one-hour expiry. Invalid tokens return 401 and disallowed roles return 403. Roles are taken from the verified token until expiry; there is no revocation, refresh, role editing, public signup, or password recovery in this milestone. Auction creation and activation require Admin, bidding requires Basic, and auction listing permits both profiles. Tests additionally exercise role restrictions and trusted actor mapping on test-only endpoints.
 
-A PostgreSQL partial unique index, `reservations_one_active_per_vehicle`, enforces one active reservation per vehicle. An availability read followed by an insert would not be sufficient. The database diplomat translates only this known constraint into `VehicleAlreadyReservedError`; the HTTP boundary maps it to a stable 409 response. Other persistence failures remain unexpected errors.
+Password hashing uses asynchronous Node scrypt with a random 16-byte salt, a versioned encoding, and fixed cost parameters (`N=131072`, `r=8`, `p=1`). Missing users still perform password work. This local exercise does not implement public-service rate limiting or account recovery.
 
-Cancellation performs a conditional update on the active status. Concurrent or repeated cancellations preserve the first successful timestamp. No multi-service transaction, retry loop, or queue is needed for this example.
+Implementation references: [Node scrypt documentation](https://nodejs.org/api/crypto.html#cryptoscryptpassword-salt-keylen-options-callback) and [jose documentation](https://github.com/panva/jose).
 
-The migration also enforces consistency between status and the cancellation timestamp. The partial unique index is maintained explicitly in SQL; inspect generated migrations and preserve it when changing the Prisma schema. Never edit a migration that has already been applied.
+## Create and list auctions
+
+Prices are integer **EUR cents**: `1000000` means EUR 10,000.00. Only positive safe integers are accepted (up to `9007199254740991`). The database stores exact BIGINT values and responses include `currency: "EUR"`.
+
+Use an Admin token to create a draft:
+
+```sh
+curl -i http://127.0.0.1:3100/auctions \
+  -H 'Authorization: Bearer <ADMIN_ACCESS_TOKEN>' \
+  -H 'Content-Type: application/json' \
+  -d '{"vehicle":{"brand":"Volkswagen","model":"Golf","vin":"WVWZZZ1KZ6W000001"},"startingPrice":1000000,"endTime":"2027-01-01T12:00:00Z"}'
+```
+
+Choose an end time in the future. Brand/model are trimmed (1–100 characters); VIN is uppercased and must be 17 letters/digits excluding I, O, and Q. The same VIN may appear in multiple auctions. End time requires an explicit timezone and at most millisecond precision. Client-supplied identity, creator, status, currency, and other unexpected fields are rejected.
+
+Creation returns 201 with exactly `id`, `vehicle`, `startingPrice`, `currency`, `endTime`, `status`, `createdAt`, `activatedAt`, `highestBid`, and `winner`. Dates are UTC ISO strings. Status is initially `draft`; the last three fields are null. A deadline at or before creation time returns 400 with code `INVALID_END_TIME`. Unauthenticated callers receive 401, and Basic callers receive 403.
+
+Both profiles can list auctions:
+
+```sh
+curl -i 'http://127.0.0.1:3100/auctions?limit=20&offset=0' \
+  -H 'Authorization: Bearer <ACCESS_TOKEN>'
+```
+
+The response is `{ "items": [...], "limit": 20, "offset": 0 }`. Limit defaults to 20 and ranges from 1–100; offset defaults to 0 and accepts nonnegative safe integers. Query values must be decimal integer strings; duplicate or unknown parameters are rejected. Results are ordered by creation time descending, then UUID ascending. Large valid offsets produce an empty page when beyond available data. Pages do not share a snapshot across separate requests.
+
+Listing derives `ended` when the observation time reaches the deadline, including for unactivated drafts. It does not write a status update or run a scheduler. Activation is available as described below. Listing includes the current highest bid and the final winner, as described below. Auctions without bids have null values for both.
+
+## Activate an auction
+
+```sh
+curl -i -X POST 'http://127.0.0.1:3100/auctions/<AUCTION_ID>/activate' \
+  -H 'Authorization: Bearer <ADMIN_ACCESS_TOKEN>'
+```
+
+An Admin receives 200 with the explicitly mapped auction, `status: "active"`, and an ISO `activatedAt` timestamp. The body may be omitted or `{}`; payload fields and arrays are rejected. UUIDs are validated before database access. Basic users receive 403 and anonymous callers receive 401.
+
+An unknown auction returns 404 with `AUCTION_NOT_FOUND`. At or after `endTime`, activation returns 409 with `AUCTION_ENDED`, even when the auction was already activated. Before the deadline, repeated calls return the existing activation timestamp unchanged. Listing includes active auctions and derives `ended` after their deadline while preserving that timestamp.
+
+Activation locks the row, evaluates eligibility with the clock after acquiring the lock, and persists the transition in one transaction. Concurrent calls preserve one timestamp. Requests blocked until the deadline are rejected; callbacks that reject leave the state unchanged. The database boundary executes the transaction, while the use case and pure rules decide the transition. No retry loop or background job is involved.
+
+## Bid and determine the winner
+
+A Basic user can bid on an active auction before its deadline:
+
+```sh
+curl -i 'http://127.0.0.1:3100/auctions/<AUCTION_ID>/bids' \
+  -H 'Authorization: Bearer <BASIC_ACCESS_TOKEN>' \
+  -H 'Content-Type: application/json' \
+  -d '{"amount":1100000}'
+```
+
+Amounts are positive safe-integer EUR cents. The first bid must meet the starting price; subsequent bids must meet or exceed the current highest amount. Equal bids are accepted and the earliest accepted one keeps the lead. Buyer identity comes from the token; client-supplied buyer IDs, timestamps, or ordering fields are rejected.
+
+Success returns 201 with exactly `id`, `auctionId`, `buyerId`, `amount`, and `acceptedAt`. Missing auctions return 404. Drafts return 409 with `AUCTION_NOT_ACTIVE`; bids below the minimum return 409 with `BID_TOO_LOW`; bids at or after the deadline return 409 with `AUCTION_ENDED`. Admin callers receive 403 and anonymous callers receive 401.
+
+The bid transaction locks the same auction row used by activation, reads the latest leading amount, and checks the server time after waiting for the lock. Accepted bids receive a unique, durable per-auction order under that lock. A request arriving before the deadline but acquiring the lock afterward is rejected. There are no automatic write retries or idempotency keys; repeating a successful request creates a separate bid.
+
+`GET /auctions` returns `highestBid` while the auction is open and sets `winner` to that same bid after the deadline. Ranking is amount descending, then acceptance order ascending, so equal timestamps and random UUIDs cannot change the winner. Auctions without bids return null for both fields. Listing uses one repeatable-read snapshot for auctions and their leaders, and one observation time for deadline decisions. Activation responses also retain the current highest bid on repeat calls. Accepted transactions become visible after commit; no scheduled closing job or persisted winner field is required.
+
+## Migrating from the sample
+
+The historical creation migration remains unchanged. The new `202611110001_remove_reservation_sample` migration removes only the `reservations` table (including its index/constraints) and `ReservationStatus` enum. **Applying it deletes existing sample reservation records.** Export those records before applying if you need them; there is no automatic data rollback. No database reset or volume deletion is needed.
+
+`npm run db:migrate` applies committed migrations to development. Test commands apply them only to the dedicated test database. The `202611110002_create_users` migration adds users, unique canonical emails, password hashes, and Admin/Basic roles. The `202611110003_create_auctions` migration adds draft auctions with EUR cents, vehicle data, deadlines, creation timestamps, and a foreign key to the authenticated creator. The creator is internal and is not exposed in responses. The `202611110004_activate_auctions` migration adds ACTIVE status, a nullable activation timestamp, and state/timestamp consistency constraints. The `202611110005_create_bids` migration adds bids, exact amounts, buyer/auction references, and a unique per-auction acceptance order. Its index ranks by amount descending and order ascending.
 
 ## Architecture
 
-Read [AGENTS.md](AGENTS.md) before changing the project. It defines allowed dependencies, layer responsibilities, contract rules, and TypeScript/NestJS practices.
+Read [AGENTS.md](AGENTS.md) before making changes. It defines dependency direction, internal-model boundaries, contracts, and testing requirements.
+
+Current source:
 
 ```text
 src/
-  config/                         Environment boundary and typed configuration
-  infrastructure/database/        Shared Prisma client and connection lifecycle
-  modules/
-    health/                       Process/dependency health endpoints
-    reservations/
-      model/                      Internal types and domain errors
-      logic/                      Pure state-transition rules
-      use-cases/                  Operations and orchestration
-        ports/                    Consumer-owned effect contracts
-      wire/in/                    Incoming HTTP contracts
-      wire/out/                   Outgoing HTTP contracts
-      adapters/                   Pure representation translation
-      diplomat/http/              Nest controllers and HTTP error mapping
-      diplomat/database/          Prisma implementation of the storage port
-      reservations.module.ts      Dependency composition
-      reservations.tokens.ts      Runtime injection tokens
+  config/                         Environment parsing and typed configuration
+  infrastructure/database/        Shared Prisma client and shutdown lifecycle
+  modules/health/                 Public liveness and readiness
+  modules/auth/                   Login, tokens, roles, user storage, demo provisioning
+  modules/auctions/               Lifecycle, bidding, winner rules, mappings, persistence
+  app.module.ts                   Application composition
+  configure-app.ts                Shared HTTP configuration
+  main.ts                         Bootstrap
 ```
 
-The HTTP diplomat validates wire input, maps it to an internal command, calls the use case, and maps the internal result to wire output. The use case calls the storage port and pure logic as needed. The concrete database diplomat implements that port. `Model` and `Wire` define data; they are not execution stages.
-
-Framework-independent use cases are instantiated through Nest factories. Pure logic and type declarations do not need Nest providers. The example module exports no providers because no other capability needs them. DatabaseModule explicitly exports the shared client to consuming modules.
+Authentication lives under `src/modules/auth`; auctions live under `src/modules/auctions`. Introduce their `model`, `logic`, `use-cases/ports`, `wire`, `adapters`, and `diplomat` files only as complete operations need them. Bids belong to auctions. HTTP diplomats own explicit wire/model conversions; use cases depend on internal models, pure rules, and effect ports. Dependency allowlists isolate each feature and layer. Typed linting rejects misplaced feature files, ambient effects in core/mappings, representation casts, and production imports of test code. The two explicitly shared auth contracts are identity types and HTTP route decorators. No placeholder feature code is included. Token verification is orchestrated by a framework-independent use case; the HTTP guard only parses headers, adapts credentials, and applies route permissions. Demo provisioning enters through a typed CLI diplomat and adapter; its identity policy is pure and runs through a transaction callback. Auction error translation is centralized in one HTTP exception filter. Input normalization runs once in validated DTOs; adapters still explicitly construct internal/external representations. User persistence writes also use an explicit mapping, preventing internal fields from leaking into Prisma.
 
 ## Verification
 
-Start the databases first, then run:
+Run only the pure business-rule tests, without Nest, mocks, PostgreSQL, or network access:
 
 ```sh
+npm run test:logic
+```
+
+The colocated suites cover auction lifecycle/winner rules, bidding rules, and demo-account identity policy under each feature's `logic/` directory. They use explicit data and time and do not instantiate Nest or effect implementations.
+
+The suite intentionally keeps one primary place for each guarantee: pure creation/activation/bidding/winner rules; focused HTTP validation/authentication contracts; and selected PostgreSQL scenarios for persistence, ordering, and lock waits. Duplicate lifecycle tests and historical sample-retirement suites were removed. The real-database suite additionally covers bid/winner isolation across auctions, activation racing with bidding, and a higher bid committing between the two listing queries. Synchronization hooks pause real queries without replacing their results. Parameterized input cases each count as a test, so the total is not a count of separate scenarios or files.
+
+```sh
+npm run db:up
 npm run verify
 ```
 
-This executes formatting, typed ESLint, TypeScript checks, architecture dependency checks, unit tests, real database integration tests, HTTP end-to-end tests, and a production build.
+| Command                                        | Purpose                                                                                           |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `npm run test:logic`                           | Pure auction and bidding rules; no framework, mocks, database, or network.                        |
+| `npm run test:adapters`                        | Pure persistence mappings: field exclusion, safe amounts, and state consistency.                  |
+| `npm test`                                     | Fast configuration, auth, auction HTTP contracts, and mapping tests; no database required.        |
+| `npm run test:integration`                     | Dedicated test-target safety checks.                                                              |
+| `npm run test:e2e`                             | Real auth/lifecycle, concurrent bids, tie ordering, snapshot listing, and lock-wait revalidation. |
+| `npm run test:all`                             | Unit, integration, and end-to-end suites.                                                         |
+| `npm run test:architecture`                    | Dependency boundaries, unresolved imports, and cycles.                                            |
+| `npm run verify`                               | Formatting, typed lint, type checking, architecture, all tests, and production build.             |
+| `npm run db:generate`                          | Regenerate the Prisma client.                                                                     |
+| `npm run db:migrate`                           | Apply committed development migrations.                                                           |
+| `npm run db:migrate:dev -- --name your_change` | Create a new development migration.                                                               |
+| `npm run build`                                | Generate the Prisma client and build production output.                                           |
+| `npm start`                                    | Start the compiled application.                                                                   |
+| `npm run db:down`                              | Stop local database containers without removing development volumes.                              |
 
-| Command                                        | Purpose                                                                               |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `npm test`                                     | Fast unit tests; no database required.                                                |
-| `npm run test:integration`                     | PostgreSQL persistence and test-target safety checks.                                 |
-| `npm run test:e2e`                             | HTTP contracts, invalid input, conflict handling, cancellation, and health.           |
-| `npm run test:all`                             | Unit, integration, and HTTP suites.                                                   |
-| `npm run test:architecture`                    | Reject core/framework coupling, unsafe layer imports, unresolved imports, and cycles. |
-| `npm run format`                               | Apply formatting.                                                                     |
-| `npm run lint`                                 | Typed linting, including unsafe values and floating promises.                         |
-| `npm run typecheck`                            | Strict TypeScript checks, including tests.                                            |
-| `npm run build`                                | Generate the client and compile the application.                                      |
-| `npm start`                                    | Run the compiled application.                                                         |
-| `npm run db:migrate:dev -- --name your_change` | Create/apply a new development migration.                                             |
-| `npm run db:down`                              | Stop this project's database containers without deleting development data.            |
+Development uses `interview_dev` on port 55432 with a persistent volume. Tests use `interview_test` on port 55433 with ephemeral storage. The runner loads `.env.test`, validates the exact loopback target before migrations, sets `NODE_ENV=test`, and runs serially. Tests validate the target before deleting only known fixture IDs. Bid fixtures are deleted before their auctions and users; unrelated rows are preserved. Never use development credentials as a test fallback or reset the development database to run tests.
 
-### Database isolation
-
-Development uses `interview_dev` on port 55432 with a named volume. Tests use `interview_test` on port 55433 in a separate container with ephemeral storage. Test commands load `.env.test`, verify the exact loopback target, apply committed migrations, and run serially. Cleanup validates the target again before deleting only the reference reservation rows. Test code never falls back to the development URL.
-
-Do not use `docker compose down -v` unless you explicitly intend to delete development data. Stopping/recreating the test container may erase its data; the test runner reapplies migrations automatically.
-
-## Evolving the starter during the interview
-
-1. Confirm observable behavior, input/output contracts, and important failure cases.
-2. Add a failing test for the first complete operation.
-3. Define the internal vocabulary and narrow ports required by that operation.
-4. Implement pure rules, boundary mappings, side effects, and Nest wiring.
-5. Verify the real HTTP/database path and the relevant concurrency/error cases.
-6. Run the checks and explain any remaining trade-offs.
-
-Keep features cohesive and avoid generic base controllers/repositories. Add HTTP clients or messaging only when the assignment requires them. To work on a different domain, add a new feature module and remove `ReservationsModule` from `AppModule` when the reference routes are no longer useful; update tests and migrations deliberately.
-
-See [docs/validation.md](docs/validation.md) for the setup's executed evidence and known tooling limitations.
+Jest uses Node's experimental VM-module flag; its warning is expected. See [validation evidence](docs/validation.md) for executed checks and their scope.

@@ -1,6 +1,7 @@
+import { AuctionsModule } from './modules/auctions/auctions.module.js';
+import { AuthModule } from './modules/auth/auth.module.js';
 import { Module } from '@nestjs/common';
 import { HealthModule } from './modules/health/health.module.js';
-import { ReservationsModule } from './modules/reservations/reservations.module.js';
 
-@Module({ imports: [HealthModule, ReservationsModule] })
+@Module({ imports: [HealthModule, AuthModule, AuctionsModule] })
 export class AppModule {}

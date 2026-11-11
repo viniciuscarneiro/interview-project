@@ -8,20 +8,59 @@ datasource db {
   provider = "postgresql"
 }
 
-enum ReservationStatus {
-  ACTIVE
-  CANCELLED
+enum UserRole {
+  ADMIN
+  BASIC
 }
 
-model Reservation {
-  id          String            @id @db.Uuid
-  vehicleId   String            @map("vehicle_id") @db.Uuid
-  buyerId     String            @map("buyer_id") @db.Uuid
-  status      ReservationStatus
-  createdAt   DateTime          @map("created_at") @db.Timestamptz(3)
-  cancelledAt DateTime?         @map("cancelled_at") @db.Timestamptz(3)
+model User {
+  id           String   @id @db.Uuid
+  email        String   @unique @db.VarChar(254)
+  passwordHash String   @map("password_hash")
+  role         UserRole
 
-  // One active reservation per vehicle is enforced by the partial unique
-  // index in the SQL migration. Do not replace it with an ordinary @@unique.
-  @@map("reservations")
+  auctions Auction[]
+  bids     Bid[]
+
+  @@map("users")
+}
+
+enum AuctionStatus {
+  DRAFT
+  ACTIVE
+}
+
+model Auction {
+  id            String        @id @db.Uuid
+  brand         String        @db.VarChar(100)
+  model         String        @db.VarChar(100)
+  vin           String        @db.VarChar(17)
+  startingPrice BigInt        @map("starting_price")
+  currency      String        @db.VarChar(3)
+  status        AuctionStatus
+  endTime       DateTime      @map("end_time") @db.Timestamptz(3)
+  activatedAt   DateTime?     @map("activated_at") @db.Timestamptz(3)
+  createdAt     DateTime      @map("created_at") @db.Timestamptz(3)
+  createdBy     String        @map("created_by") @db.Uuid
+  creator       User          @relation(fields: [createdBy], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  bids Bid[]
+
+  @@index([createdAt(sort: Desc), id(sort: Asc)], map: "auctions_listing_order")
+  @@map("auctions")
+}
+
+model Bid {
+  id              String   @id @db.Uuid
+  auctionId       String   @map("auction_id") @db.Uuid
+  buyerId         String   @map("buyer_id") @db.Uuid
+  amount          BigInt
+  acceptedAt      DateTime @map("accepted_at") @db.Timestamptz(3)
+  acceptanceOrder BigInt   @map("acceptance_order")
+  auction         Auction  @relation(fields: [auctionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  buyer           User     @relation(fields: [buyerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([auctionId, acceptanceOrder], map: "bids_auction_acceptance_order_key")
+  @@index([auctionId, amount(sort: Desc), acceptanceOrder(sort: Asc)], map: "bids_highest_order")
+  @@map("bids")
 }

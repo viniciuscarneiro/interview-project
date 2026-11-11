@@ -4,7 +4,7 @@
 
 This repository is a small, runnable interview starter. All code, comments, documentation, test names, and API messages must be in English. Preserve a working application after every change. Prefer a complete, testable vertical slice over speculative framework code.
 
-The reservations feature is an illustrative reference, not an assumption about the interview assignment. It demonstrates explicit HTTP contracts, pure domain decisions, application orchestration, and real persistence. The application is local development software; it has no authentication or authorization and must not be exposed as a production service.
+This repository is becoming a vehicle auction lifecycle API. The completed interview API includes authentication, Admin/Basic profiles, demo-account provisioning, Admin auction creation/activation, Basic-user bidding, and authenticated listing with highest bids and deadline-based winners on the health/database foundation. See `docs/auction-contract.md` for the target contracts and milestone tasks. The application remains local development software and must not be exposed as a production service.
 
 ## Architecture: feature-oriented Diplomat adaptation
 
@@ -34,7 +34,7 @@ Here `A -> B` means A imports/depends on B, not that data only flows in that dir
 - `logic -> model`.
 - `use-cases -> model, logic, own ports`.
 - `ports -> internal types`.
-- `adapters -> wire, model, internal input types`; persistence adapters may import generated Prisma types and enums solely for representation mapping.
+- `adapters -> wire, model`; persistence adapters may import generated Prisma types and enums solely for representation mapping. Adapters must not import use cases, including type-only imports. Declare internal operation inputs and outputs in `model/`.
 - `diplomat/http -> wire, adapters, use-cases`.
 - `diplomat/database -> infrastructure/database, adapters, model, port contracts`.
 - Composition modules may import all of their feature's components to wire them together.
@@ -42,13 +42,75 @@ Here `A -> B` means A imports/depends on B, not that data only flows in that dir
 - A use case depends on a storage port; the database diplomat implements it. The use case must never import its concrete implementation.
 - A runtime Nest module import only exposes exported providers. Export only what another module actually needs; avoid global feature modules and circular module dependencies.
 
-Run `npm run test:architecture`. Update its rules only for a documented architectural decision, never just to silence a forbidden import. Models, pure rules, ports, and use cases must remain framework-independent. Unit tests can sit next to the production files; architecture constraints apply to production imports.
+Run `npm run test:architecture` and `npm run lint` (both are included in `npm run verify`). Dependency Cruiser generates positive allowlists for every feature directory; ESLint supplements import checks with placement and effect restrictions. These rules implement the boundaries above:
+
+- Core imports stay in the same feature: model, pure logic, consumer-owned ports, and named `use-cases/*.errors.ts` application errors. Core code cannot reach composition modules or another feature's private operations through an intermediate import.
+- HTTP/CLI diplomats invoke application operations through explicit adapters. They do not consume effect ports directly or perform outbound network/crypto operations. Guards follow this rule too.
+- Database and crypto diplomats implement ports; they may not import use cases or business rules. When policy must run inside a transaction, the use case supplies a synchronous callback operating on adapted internal models.
+- Wire contracts depend only on their own wire definitions and structural validation libraries. Persistence representations are generated types at database/persistence-adapter boundaries only; adapters cannot import the runtime Prisma client.
+- The only cross-feature contracts currently shared are auth's `Actor`/`Role` model and HTTP route decorators. They intentionally support identity and access control; other feature internals remain private. Auth exports only the CLI provider needed by the provisioning bootstrap; its global auth guard is registered through `APP_GUARD`, not a global feature module.
+- Configuration and infrastructure cannot import features. Configuration parsing stays in `config`; bootstrap scripts may load environment files and pass validated values into a typed diplomat.
+- Models, logic, use cases, wire, and adapters cannot access ambient clocks, randomness, network, process state, or logging. Explicit Date inputs and pure representation conversion remain allowed. Production casts cannot replace adapters, production code cannot import tests, and feature dependencies use static ESM imports so layer checks can inspect them.
+- Feature implementation files must live in a declared layer. Feature roots contain composition modules and runtime tokens. A new integration protocol requires an explicit dependency policy, not an unclassified helper directory.
+
+The HTTP-to-persistence restriction also covers every feature `*.controller.ts`, so moving a controller cannot bypass it. Health readiness follows the same port/diplomat boundary as other capabilities. Update rules only for a documented architectural decision, never to silence a forbidden import. Import/lint checks still supplement manual review of the actual input/output adapter flow; TypeScript structural compatibility is not proof of correct adaptation.
 
 ### Contracts, adapters, and model
 
 `wire/in` and `wire/out` describe messages entering/leaving this application. For an external HTTP client, an incoming provider response belongs to wire/in and the outgoing provider request to wire/out. If integrations appear, namespace contracts by protocol/provider to avoid ambiguity.
 
 A DTO is an external contract, not a domain entity. A create request may map to a small internal command; a complete model is built only after the operation has obtained its required data. Keep `wire` independent of internal models so internal refactors do not silently change the public API.
+
+### Mandatory rule: use cases operate on internal models only
+
+**Use cases must never receive wire/in, return wire/out, or perform wire/model conversion. Diplomats own the boundary and must call adapters before and after invoking a use case.** This is a required architecture rule, including when the external DTO and the internal model happen to have identical fields.
+
+1. Declare all feature operation data inputs and outputs in `model/`. An input model can be a command such as `CreateAuctionInput` or a reference such as `AuctionReference`; it does not have to be a complete persisted entity.
+2. Define external request and response contracts independently in `wire/in/` and `wire/out/`.
+3. The inbound diplomat validates incoming wire data and invokes an adapter to obtain the internal input model.
+4. The diplomat passes only that internal input model to the use case. The use case coordinates logic and effect ports and returns an internal model when the operation has a result payload.
+5. The diplomat invokes an adapter to convert the returned model into wire/out before sending the response.
+6. Outbound diplomats implement the reverse integration boundary: receive internal data through a port, adapt it for the external system, perform I/O, and adapt external results back to internal data before returning to the use case. Generated persistence types stay at that boundary.
+
+Effect dependencies still use consumer-owned interfaces under `use-cases/ports/`. This rule governs the data crossing operation boundaries; it does not prohibit use cases from depending on pure logic or effect ports.
+
+Allowed HTTP diplomat orchestration:
+
+```ts
+const inputModel = toCreateAuctionInput(request);
+const resultModel = await this.createAuction.execute(inputModel);
+return toAuctionResponse(resultModel);
+```
+
+The equivalent nested calls used in the controller are also valid. The conversions must still be explicit adapter calls owned by the diplomat.
+
+Allowed imports and signature in the use case:
+
+```ts
+import type { CreateAuctionInput } from '../model/create-auction.input.js';
+import type { Auction } from '../model/auction.js';
+
+// execute(input: CreateAuctionInput): Promise<Auction>
+```
+
+Forbidden:
+
+- A use case importing `wire/in`, `wire/out`, adapters, or vendor-generated records, even with `import type`.
+- A use-case signature accepting `CreateAuctionRequest` or returning `AuctionResponse`.
+- A diplomat passing the raw DTO straight to a use case or serializing an internal model directly as the public response.
+- An adapter importing input/output types from a use-case file. Move those internal types into `model/` instead.
+- Defining shared operation data contracts inside `use-cases/`, or deriving internal models from wire types through `Pick`, `Omit`, aliases, inheritance, or re-exports.
+- Replacing a conversion with `as InternalModel`. A cast is not an adapter and performs no runtime transformation.
+
+TypeScript's structural compatibility does not grant permission to bypass these boundaries. Even validated route parameters must be adapted into an internal reference before calling a use case. For authentication, convert trusted identity claims into an internal actor model at the diplomat boundary; do not pass HTTP requests, JWT payload types, or Passport objects into use cases.
+
+Before completing a feature, inspect its use-case signatures and the diplomat's input/output mappings. Run `npm run test:architecture`: the core independence rule blocks wire imports into use cases, and `adapters-do-not-depend-on-use-cases` blocks adapter imports of use cases, including type-only imports. These import checks supplement review of the actual flow; they do not prove a structurally compatible DTO was not passed directly.
+
+### Representation mapping and compatibility
+
+DTO transformations canonicalize email/vehicle strings before structural validation when validation depends on their normalized form. HTTP adapters receive those validated contracts and explicitly construct internal inputs; do not repeat that normalization. Identity/reference conversion and date representation changes still belong in adapters. Persistence writes enumerate their allowed fields through adapters; never spread an internal model into a vendor record.
+
+Auction errors share one HTTP exception filter owned by the auctions capability. Keep error/status translation out of use cases and do not duplicate it across controller methods.
 
 Use explicit response mapping. Preserve field names, units, nullability, enum semantics, and date representations. Dates are `Date` values internally and ISO strings over HTTP. Mappings must reject unsupported representation values rather than silently inventing defaults. Merely separating DTOs does not guarantee compatibility: verify request acceptance, rejection, and exact response shapes in HTTP contract tests.
 
@@ -78,14 +140,21 @@ Database contracts are represented by the Prisma schema/generated types at the p
 - Avoid generic base repositories/controllers, inheritance hierarchies, and catch-all `utils` directories. Extract shared code only when shared meaning and change lifecycle are established.
 - Pin dependencies and commit the lockfile. Keep Prisma CLI, client, and adapter on the same version. Generated code is ignored and regenerated before build.
 
-## Reference feature contract
+## Auction contract and delivery scope
 
-- `POST /reservations`: accepts UUID `vehicleId` and `buyerId`; creates an active reservation and returns 201.
-- `GET /reservations/:id`: returns the explicitly mapped reservation or 404.
-- `DELETE /reservations/:id`: cancels the reservation, returns its representation, and is idempotent for an existing cancelled reservation. Missing IDs return 404.
-- At most one active reservation may exist for a vehicle. A PostgreSQL partial unique index enforces this atomically. Concurrent conflicting creates produce one 201 and the others 409. A cancelled reservation releases the vehicle.
-- Vehicle/buyer IDs are opaque references in this teaching example: there is no inventory, buyer service, payment, authentication, expiry, or ownership authorization.
-- Cancellation updates only an active reservation and preserves the original cancellation timestamp on repeats. Use cases must not pretend an availability pre-check guarantees concurrency safety.
+The target behavior and milestone checklist live in [docs/auction-contract.md](docs/auction-contract.md). Authentication, auction creation/activation, bidding, and listing with highest bids and winners are implemented.
+
+- Admin users create draft auctions and activate eligible drafts; Basic users place bids. Both roles can list auctions.
+- Bids must meet the starting price and current highest amount. Equal bids are accepted; the earliest accepted highest bid leads and wins after the deadline.
+- Reject bids at or after the end time. Evaluate eligibility after acquiring the per-auction database lock; pre-checks do not establish concurrency safety.
+- Use integer EUR cents for prices, explicit server time, and persisted per-auction acceptance order for bids. Persist EUR with each auction; clients cannot supply another currency. PostgreSQL BIGINT money must be checked for positive safe-integer representability before mapping to JavaScript numbers.
+- Authentication belongs at the HTTP boundary. Convert trusted identity into an internal actor model; never accept a buyer ID from the bid payload.
+- Activation uses a consumer-owned storage port that invokes a synchronous transition callback after acquiring the row lock. The use case reads its clock inside the callback and calls pure logic; the database diplomat owns only locking, mapping, and persistence. Repeats preserve the first timestamp and still reject at or after the deadline.
+- Bid acceptance uses the same auction row lock. Read the current auction, leading bid, and next durable order before invoking the synchronous decision callback; the use case reads its clock inside that callback. Store the accepted bid in the same transaction. No automatic retries or deduplication.
+- Highest-bid ordering is part of the consumer-owned read contract: amount descending, acceptance order ascending. Listing reads auctions and their leaders in one database snapshot. The pure view rule derives the winner from that leader at the deadline; no scheduler or stored winner is needed.
+- Registered HTTP routes require authentication by default. Only login and health are public. Use auth HTTP decorators for public routes, role restrictions, and trusted actor access; JWT payload types and requests must never enter use cases.
+- Demo provisioning is a local-only command and never runs during application startup. The script calls a typed CLI diplomat, which adapts the request before invoking the use case. Preserve existing credentials and reject identity/role conflicts atomically through a pure policy callback; the database implementation only persists and adapts records.
+- Keep bids within the auctions capability. Introduce auth and auction modules only with complete operations; do not add placeholder feature code in milestone one.
 
 ## Testing strategy: protect application behavior
 
@@ -115,7 +184,7 @@ Trust the documented behavior of PostgreSQL, Prisma, NestJS, and validation libr
 - A fake implements a port with simple behavior, such as an in-memory map. A stub supplies a scenario outcome, such as returning null or raising a known conflict. Keep both typed against the application's port.
 - Construct use cases with a fixed runtime/clock and deterministic IDs. Do not sleep to make timestamps differ.
 - Use real business functions. Do not reproduce production business rules inside a fake; that can make the test pass because both copies contain the same mistake.
-- Assert observable outcomes and meaningful effects. For example, when cancellation cannot find a reservation, assert the application error and that no state was changed. Interaction assertions are appropriate when an effect itself is the contract, such as preventing a charge, but avoid pinning unrelated call order.
+- Assert observable outcomes and meaningful effects. For example, when bidding cannot find an auction, assert the application error and that no state was changed. Interaction assertions are appropriate when an effect itself is the contract, such as preventing a charge, but avoid pinning unrelated call order.
 - An in-memory store proves how the consumer behaves under its simulated outcomes. It cannot demonstrate SQL behavior, database isolation, or race safety across actual connections.
 
 ### HTTP contracts versus end-to-end coverage
@@ -132,13 +201,13 @@ The current starter's `test/e2e` suite uses real PostgreSQL. This guide does not
 
 Before adding one, state the specific application guarantee, why a deterministic double is insufficient, and whether an existing feature scenario already covers it. A migration or persistence change may justify one focused compatibility check; that does not imply retesting all database features.
 
-Example from this starter: PostgreSQL correctly rejected a second active reservation, but our Prisma error interpretation initially returned HTTP 500 instead of the intended 409. The useful guarantee is **a known persistence conflict becomes the correct application error and HTTP response**. A classifier unit test with an observed error fixture protects our translation; a selected real integration checks that the actual provider still emits the shape we handle. Neither is a test of PostgreSQL's UNIQUE algorithm.
+For example, protect the guarantee that a known persistence conflict becomes the correct application error and HTTP response. A classifier unit test with an observed error fixture protects our translation; a selected real integration can check that the actual provider emits the shape we handle. Neither is a test of PostgreSQL's UNIQUE algorithm.
 
 If concurrent behavior is an acceptance criterion, a focused real-concurrency scenario can prove our complete operation. Do not add a second constraint-only test that duplicates that evidence. If a real integration is omitted, describe the unverified boundary honestly instead of claiming a fake proves it.
 
 ### Test quality and placement
 
-- Name tests after behavior: `preserves the first cancellation timestamp`, not `calls updateMany`.
+- Name tests after behavior: `keeps the earliest equal highest bid in the lead`, not `calls findMany`.
 - Cover success, relevant boundaries, and meaningful failures. Do not invent cases solely to meet a coverage percentage.
 - Build expected values independently of the code under test. Avoid broad snapshots where explicit assertions make the contract clearer.
 - Add a failing behavioral test before implementing new behavior; first distinguish missing behavior from environment/import failures. A useful test should fail when the protected behavior is broken.
@@ -149,9 +218,9 @@ If concurrent behavior is an acceptance criterion, a focused real-concurrency sc
 ### Safe database use
 
 - Database tests must use the dedicated loopback `interview_test` database on port 55433 and `NODE_ENV=test`. The test runner validates the target before migrations or deletion. Never fall back to the development `DATABASE_URL`.
-- Tests run serially because they reset shared reference data. Do not parallelize database suites without adding isolated databases/schemas.
-- Never use a broad truncate/drop/reset command. Delete only the known reference table's rows after validating the dedicated test target. Development data must survive tests.
-- Never edit an applied migration; add a new migration. Preserve the hand-written partial unique index when changing schema/migrations.
+- Tests run serially because they may reset shared feature data. Do not parallelize database suites without adding isolated databases/schemas.
+- Never use a broad truncate/drop/reset command. Delete only explicitly named feature rows after validating the dedicated test target. Auth tests delete only their known user fixture IDs. Auction tests delete only their known auction IDs before their user fixtures, preserving foreign-key integrity. Bidding tests delete only bids belonging to their known auction fixture before deleting that auction and its users. Development data must survive tests.
+- Never edit an applied migration; add a new migration. Preserve historical SQL, including the retired sample index. The dedicated sample-removal migration drops only its table and enum; never use CASCADE or reset the database. Future migrations must preserve any active hand-written constraints.
 
 ## Commands and completion
 

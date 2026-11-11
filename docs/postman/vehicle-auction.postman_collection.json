@@ -1,0 +1,740 @@
+{
+  "info": {
+    "_postman_id": "7fbb8fdc-5a5d-4f46-a1cc-681aed354e29",
+    "name": "Vehicle Auction Interview API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Import the companion Local environment, fill its passwords, and select it before sending requests. Milestones one through five are complete: health, login, creation, listing, activation, bidding, highest bids, and winner selection are available. Run folders in order on a fresh auction. The bidding scenario places equal bids and checks that the earlier bid remains the leader. Winner checks can be repeated after the deadline without changing server time. Apply current migrations and provision local accounts first. Write requests modify local application data. No credentials or saved response tokens are included."
+  },
+  "item": [
+    {
+      "name": "01 \u2014 Health",
+      "item": [
+        {
+          "name": "Liveness",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/health/live",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Readiness",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/health/ready",
+            "description": "Requires PostgreSQL to be reachable. Returns 503 when unavailable.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 \u2014 Authentication",
+      "item": [
+        {
+          "name": "Login \u2014 ADMIN",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auth/login",
+            "description": "Uses credentials from the selected environment; saves the access token on a successful login with the expected role. Run again after token expiry.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{{login_payload}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.unset(\"admin_access_token\");",
+                  "const email = pm.environment.get(\"admin_email\");",
+                  "const password = pm.environment.get(\"admin_password\");",
+                  "if (!email || !password) throw new Error(\"Set admin_email and admin_password in the selected environment.\");",
+                  "pm.variables.set(\"login_payload\", JSON.stringify({ email, password }));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test(\"Expected profile and token\", () => {",
+                  "    pm.expect(body.user.role).to.equal(\"ADMIN\");",
+                  "    pm.expect(body.accessToken).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.expiresIn).to.equal(3600);",
+                  "  });",
+                  "  if (body.user.role === \"ADMIN\" && typeof body.accessToken === \"string\" && body.accessToken) {",
+                  "    pm.environment.set(\"admin_access_token\", body.accessToken);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login \u2014 BASIC",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auth/login",
+            "description": "Uses credentials from the selected environment; saves the access token on a successful login with the expected role. Run again after token expiry.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{{login_payload}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.unset(\"buyer_access_token\");",
+                  "const email = pm.environment.get(\"buyer_email\");",
+                  "const password = pm.environment.get(\"buyer_password\");",
+                  "if (!email || !password) throw new Error(\"Set buyer_email and buyer_password in the selected environment.\");",
+                  "pm.variables.set(\"login_payload\", JSON.stringify({ email, password }));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test(\"Expected profile and token\", () => {",
+                  "    pm.expect(body.user.role).to.equal(\"BASIC\");",
+                  "    pm.expect(body.accessToken).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.expiresIn).to.equal(3600);",
+                  "  });",
+                  "  if (body.user.role === \"BASIC\" && typeof body.accessToken === \"string\" && body.accessToken) {",
+                  "    pm.environment.set(\"buyer_access_token\", body.accessToken);",
+                  "    if (typeof body.user.id === \"string\") pm.environment.set(\"buyer_id\", body.user.id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 \u2014 Create and list auctions",
+      "item": [
+        {
+          "name": "Create draft \u2014 Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auctions",
+            "description": "Creates a real auction. 1000000 means EUR 10,000.00. Blank auction_end_time generates a deadline 24 hours ahead; otherwise your explicit ISO timezone-aware value is used. Saves auction_id. Re-running this request creates another auction.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vehicle\": {\n    \"brand\": \"Volkswagen\",\n    \"model\": \"Golf\",\n    \"vin\": \"WVWZZZ1KZ6W000001\"\n  },\n  \"startingPrice\": 1000000,\n  \"endTime\": \"{{request_end_time}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.unset(\"last_bid_id\");",
+                  "pm.environment.unset(\"first_bid_amount\");",
+                  "pm.environment.unset(\"first_bid_id\");",
+                  "pm.environment.unset(\"auction_id\");",
+                  "pm.environment.unset(\"activated_at\");",
+                  "const configured = pm.environment.get(\"auction_end_time\");",
+                  "pm.variables.set(\"request_end_time\", configured || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test(\"Draft uses EUR cents\", () => {",
+                  "    pm.expect(body.status).to.equal(\"draft\");",
+                  "    pm.expect(body.currency).to.equal(\"EUR\");",
+                  "    pm.expect(body.startingPrice).to.equal(1000000);",
+                  "    pm.expect(body.activatedAt).to.equal(null);",
+                  "  });",
+                  "  if (typeof body.id === \"string\") pm.environment.set(\"auction_id\", body.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List auctions \u2014 Admin",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/auctions?limit={{limit}}&offset={{offset}}",
+            "description": "Default limit 20 and offset 0. Limit must be 1\u2013100. Orders by createdAt descending, then ID ascending. Both roles can see drafts, active, and ended auctions.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test(\"Paginated auction response\", () => {",
+                  "    pm.expect(body.items).to.be.an(\"array\");",
+                  "    pm.expect(body.limit).to.equal(Number(pm.environment.get(\"limit\")));",
+                  "    pm.expect(body.offset).to.equal(Number(pm.environment.get(\"offset\")));",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List auctions \u2014 Basic",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/auctions?limit={{limit}}&offset={{offset}}",
+            "description": "Default limit 20 and offset 0. Limit must be 1\u2013100. Orders by createdAt descending, then ID ascending. Both roles can see drafts, active, and ended auctions.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{buyer_access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test(\"Paginated auction response\", () => {",
+                  "    pm.expect(body.items).to.be.an(\"array\");",
+                  "    pm.expect(body.limit).to.equal(Number(pm.environment.get(\"limit\")));",
+                  "    pm.expect(body.offset).to.equal(Number(pm.environment.get(\"offset\")));",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 \u2014 Activation",
+      "item": [
+        {
+          "name": "Activate \u2014 Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auctions/{{auction_id}}/activate",
+            "description": "Activates an unexpired draft as Admin and saves activated_at. Accepts an omitted body or an empty JSON object. Repeated and concurrent activations preserve the first timestamp. Malformed ID/body: 400. Missing auction: 404. Ended auction, including an already-active auction at its deadline: 409. Requires the current migrations.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get(\"auction_id\")) throw new Error(\"Create an auction or set auction_id first.\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test(\"Auction is active\", () => {",
+                  "    pm.expect(body.id).to.equal(pm.environment.get(\"auction_id\"));",
+                  "    pm.expect(body.status).to.equal(\"active\");",
+                  "    pm.expect(body.activatedAt).to.be.a(\"string\").and.not.empty;",
+                  "  });",
+                  "  if (typeof body.activatedAt === \"string\") pm.environment.set(\"activated_at\", body.activatedAt);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Repeat activation \u2014 same timestamp",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auctions/{{auction_id}}/activate",
+            "description": "Run after Activate. Repeated activation is successful only while the auction is unexpired.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get(\"auction_id\")) throw new Error(\"Create an auction or set auction_id first.\");",
+                  "if (!pm.environment.get(\"activated_at\")) throw new Error(\"Run Activate successfully first.\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test(\"First activation timestamp is preserved\", () => {",
+                  "    pm.expect(body.status).to.equal(\"active\");",
+                  "    pm.expect(body.activatedAt).to.equal(pm.environment.get(\"activated_at\"));",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 \u2014 Bidding and winner",
+      "item": [
+        {
+          "name": "Place bid \u2014 Basic",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auctions/{{auction_id}}/bids",
+            "description": "Places a real bid in EUR cents. bid_amount defaults to 1100000 (EUR 11,000.00). Only an active, unexpired auction accepts bids. Captures first_bid_id and first_bid_amount for the tie scenario.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{buyer_access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{{bid_payload}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get(\"auction_id\")) throw new Error(\"Create and activate an auction first.\");",
+                  "if (!pm.environment.get(\"buyer_access_token\")) throw new Error(\"Login as Basic first.\");",
+                  "pm.environment.unset(\"first_bid_id\");",
+                  "pm.environment.unset(\"first_bid_amount\");",
+                  "pm.environment.unset(\"last_bid_id\");",
+                  "const amount = Number(pm.variables.get(\"bid_amount\") || \"1100000\");",
+                  "if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error(\"bid_amount must be a positive safe integer in EUR cents.\");",
+                  "pm.variables.set(\"bid_payload\", JSON.stringify({ amount }));",
+                  "pm.variables.set(\"request_bid_amount\", amount);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test(\"Accepted bid belongs to this auction and buyer\", () => {",
+                  "    pm.expect(body.auctionId).to.equal(pm.environment.get(\"auction_id\"));",
+                  "    pm.expect(body.buyerId).to.equal(pm.environment.get(\"buyer_id\"));",
+                  "    pm.expect(body.amount).to.equal(pm.variables.get(\"request_bid_amount\"));",
+                  "    pm.expect(body.id).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(body.acceptedAt).to.be.a(\"string\").and.not.empty;",
+                  "  });",
+                  "  if (typeof body.id === \"string\" && Number.isSafeInteger(body.amount)) {",
+                  "    pm.environment.set(\"first_bid_id\", body.id);",
+                  "    pm.environment.set(\"first_bid_amount\", body.amount);",
+                  "    pm.environment.set(\"last_bid_id\", body.id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Place equal bid \u2014 Basic",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auctions/{{auction_id}}/bids",
+            "description": "Accepts the same amount as the first bid. This is a distinct bid; repeating a bid is not idempotent. The first bid should remain leader on a fresh auction without competing submissions.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{buyer_access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{{bid_payload}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get(\"auction_id\")) throw new Error(\"Create and activate an auction first.\");",
+                  "if (!pm.environment.get(\"buyer_access_token\")) throw new Error(\"Login as Basic first.\");",
+                  "if (!pm.environment.get(\"first_bid_id\")) throw new Error(\"Run Place bid successfully first.\");",
+                  "const amount = Number(pm.environment.get(\"first_bid_amount\"));",
+                  "pm.variables.set(\"bid_payload\", JSON.stringify({ amount }));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test(\"Equal amount creates a distinct bid\", () => {",
+                  "    pm.expect(body.amount).to.equal(Number(pm.environment.get(\"first_bid_amount\")));",
+                  "    pm.expect(body.auctionId).to.equal(pm.environment.get(\"auction_id\"));",
+                  "    pm.expect(body.id).not.to.equal(pm.environment.get(\"first_bid_id\"));",
+                  "  });",
+                  "  if (typeof body.id === \"string\") pm.environment.set(\"last_bid_id\", body.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Check earliest highest bid and winner \u2014 Basic",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/auctions?limit=100&offset=0",
+            "description": "Finds the selected auction in the newest 100 entries. Checks that the first equal-highest bid leads. Before the deadline winner is null; after the deadline winner matches that bid. Run again manually after the deadline. No waiting or server-time changes are performed.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{buyer_access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get(\"auction_id\")) throw new Error(\"Create and activate an auction first.\");",
+                  "if (!pm.environment.get(\"buyer_access_token\")) throw new Error(\"Login as Basic first.\");",
+                  "if (!pm.environment.get(\"first_bid_id\")) throw new Error(\"Run Place bid successfully first.\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  const auction = body.items.find(item => item.id === pm.environment.get(\"auction_id\"));",
+                  "  pm.test(\"Earliest highest bid remains the leader and eventual winner\", () => {",
+                  "    if (!auction) throw new Error(\"Selected auction is not in the newest 100 entries. Locate it using the paginated listing requests.\");",
+                  "    pm.expect(auction.highestBid.id).to.equal(pm.environment.get(\"first_bid_id\"));",
+                  "    pm.expect(auction.highestBid.amount).to.equal(Number(pm.environment.get(\"first_bid_amount\")));",
+                  "    if (auction.status === \"ended\") {",
+                  "      pm.expect(auction.winner.id).to.equal(pm.environment.get(\"first_bid_id\"));",
+                  "    } else {",
+                  "      pm.expect(auction.status).to.equal(\"active\");",
+                  "      pm.expect(auction.winner).to.equal(null);",
+                  "    }",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject lower bid \u2014 Basic",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auctions/{{auction_id}}/bids",
+            "description": "Expected 409 BID_TOO_LOW while the auction is still active. After the deadline the API correctly returns AUCTION_ENDED instead; this scenario must run before it.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{buyer_access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{{bid_payload}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get(\"auction_id\")) throw new Error(\"Create and activate an auction first.\");",
+                  "if (!pm.environment.get(\"buyer_access_token\")) throw new Error(\"Login as Basic first.\");",
+                  "if (!pm.environment.get(\"first_bid_id\")) throw new Error(\"Run Place bid successfully first.\");",
+                  "const amount = Number(pm.environment.get(\"first_bid_amount\")) - 1;",
+                  "if (!Number.isSafeInteger(amount) || amount < 1) throw new Error(\"A positive lower amount is required for this scenario.\");",
+                  "pm.variables.set(\"bid_payload\", JSON.stringify({ amount }));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 409\", () => pm.response.to.have.status(409));",
+                  "if (pm.response.code === 409) {",
+                  "  pm.test(\"Lower bids are rejected\", () => pm.expect(pm.response.json().code).to.equal(\"BID_TOO_LOW\"));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
